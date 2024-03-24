@@ -1,0 +1,141 @@
+************************************************
+*****LOAD DATA AND CREATE DATA DATES************
+************************************************
+cal(m) 1948:1
+open data H2q4.xls
+data(format=xls,org=obs) 1948:1 2020:10
+
+compute begin   = 1965:1
+compute end     = 2007:1
+
+************************************************
+*****TRANSFORM VARIABLES************************
+************************************************
+
+set ut        = UNRATE
+set yt        = log(INDPRO)
+set rt        = FEDFUNDS
+set pct       = log(PPIACO)
+set pt        = log(CPIAUCSL)
+set nbrt      = log(NONBORRES)
+set trt       = log(TOTRESNS)
+set mt        = log(M1SL)
+
+
+************************************************************
+*****CREATE VARIABLES STRINGS****
+************************************************************
+compute [vector[label]] varlist   = ||"yt","ut","pt","pct","rt","nbrt","trt","mt"||
+compute [vector[label]] varlabels = ||"Production industrielle","Taux de ch�mage","IPC","Indice des mati�res premi�res","Taux des fonds f�d�raux","R�serves non emprunt�es","R�serves totales","Stock d'argent M1"||
+compute [vector[label]] varlabels_4 = ||"Taux de ch�mage","Production industrielle","IPC","Indice des mati�res premi�res","Taux des fonds f�d�raux","R�serves non emprunt�es","R�serves totales","Stock d'argent M1"||
+
+compute nvar = %size(varlist)
+
+************************************************************
+*****PLOT VARIABLES*****************************************
+************************************************************
+spgraph(header="Variables",vfields=3,hfields=2)
+do i = 1,5
+   set vargr = %s(varlist(i))
+   graph(header=(varlabels(i)),nodates) 1
+   # vargr
+end do
+spgraph(done)
+
+
+compute  reglist = %rlempty()
+do i=1,nvar
+   compute reglist = %rladdone(reglist,%s(varlist(i)))
+end do
+
+************************************************************
+*****ESTIMATE VAR and IDENTIFY with RECURSIVE ORDERING*****
+************************************************************
+compute lags = 12
+system(model=varmodel)
+variables yt ut pt pct rt nbrt trt mt
+lags 1 to 12
+det constant
+end(system)
+estimate(outsigma=sigmat,residuals=resids_chol) begin end
+
+************************************************************
+*****ESTIMATE MATRIX A FROM CHOL DECOMPOSITION**************
+************************************************************
+declare rectangular chol_decomp
+declare rectangular mat_u
+
+compute chol_decomp = tr(%DECOMP(sigmat))
+compute mat_u = %diag(%XDIAG(chol_decomp))
+compute mat_u_inv = inv(mat_u)
+compute A_inv = tr(mat_u_inv * chol_decomp)
+compute A = inv(A_inv)
+medit A
+************************************************************
+*****4.3B***************************************************
+************************************************************
+*Error vector
+declare rectangular chol_imp
+compute ut_impulse_vec = %unitv(8,5)*sigmat(5,5)
+compute chol_imp = tr(%diag(ut_impulse_vec) * tr(A_inv))
+
+IMPULSE(MODEL=VARMODEL,STEPS=20,FACTOR=chol_imp,RESULT=IMPULSE_20, noprint)
+
+
+spgraph(header="Shocs des taux de fonds federaux",vfields=3,hfields=2)
+do i = 1,5
+   set xirf = IMPULSE_20(i,5)
+   graph(header=(varlabels(i)),nodates) 1
+   # xirf
+end do
+spgraph(done)
+
+
+************************************************************
+*****4.4****************************************************
+************************************************************
+
+
+************************************************************
+*****ESTIMATE VAR and IDENTIFY with RECURSIVE ORDERING*****
+************************************************************
+compute lags = 12
+system(model=varmodel_4)
+variables ut yt pt pct rt nbrt trt mt
+lags 1 to 12
+det constant
+end(system)
+estimate(outsigma=sigmat_4,residuals=resids_chol) begin end
+
+************************************************************
+*****ESTIMATE MATRIX A FROM CHOL DECOMPOSITION**************
+************************************************************
+declare rectangular chol_decomp
+declare rectangular mat_u
+
+compute chol_decomp2 = tr(%DECOMP(sigmat_4))
+compute mat_u2 = %diag(%XDIAG(chol_decomp2))
+compute mat_u_inv2 = inv(mat_u2)
+compute A_inv2 = tr(mat_u_inv2 * chol_decomp2)
+compute A2 = inv(A_inv2)
+medit A2
+
+************************************************************
+*****4.3B***************************************************
+************************************************************
+*Error vector
+declare rectangular chol_imp
+compute ut_impulse_vec = %unitv(8,5)*sigmat_4(5,5)
+compute chol_imp = tr(%diag(ut_impulse_vec) * tr(A_inv2))
+
+IMPULSE(MODEL=VARMODEL_4,STEPS=20,FACTOR=chol_imp,RESULT=IMPULSE_20_4, noprint)
+
+spgraph(header="Shocs des taux de fonds federaux",vfields=3,hfields=2)
+do i = 1,5
+   set xirf_4 = IMPULSE_20_4(i,5)
+   graph(header=(varlabels_4(i)),nodates) 1
+   # xirf_4
+end do
+spgraph(done)
+
+
